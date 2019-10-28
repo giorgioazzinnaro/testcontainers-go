@@ -20,10 +20,7 @@ require (
 	github.com/gorilla/context v1.1.1 // indirect
 	github.com/gorilla/mux v1.6.2 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
-<<<<<<< HEAD
 	github.com/minio/minio-go/v6 v6.0.39
-=======
->>>>>>> feature/canned-redis
 	github.com/lib/pq v1.2.0
 	github.com/morikuni/aec v0.0.0-20170113033406-39771216ff4c // indirect
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
