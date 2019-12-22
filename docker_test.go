@@ -3,7 +3,9 @@ package testcontainers
 import (
 	"context"
 	"fmt"
+	"github.com/docker/docker/api/types/volume"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -473,7 +475,6 @@ func TestContainerCreationWithName(t *testing.T) {
 }
 
 func TestContainerCreationAndWaitForListeningPortLongEnough(t *testing.T) {
-	t.Skip("Wait needs to be fixed")
 	ctx := context.Background()
 
 	nginxPort := "80/tcp"
@@ -825,4 +826,118 @@ func TestCMD(t *testing.T) {
 
 	// defer not needed, but keeping it in for consistency
 	defer c.Terminate(ctx)
+}
+
+func ExampleDockerProvider_CreateContainer() {
+	ctx := context.Background()
+	req := ContainerRequest{
+		Image:        "nginx",
+		ExposedPorts: []string{"80/tcp"},
+		WaitingFor:   wait.ForHTTP("/"),
+	}
+	nginxC, _ := GenericContainer(ctx, GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	defer nginxC.Terminate(ctx)
+}
+
+func ExampleContainer_Host() {
+	ctx := context.Background()
+	req := ContainerRequest{
+		Image:        "nginx",
+		ExposedPorts: []string{"80/tcp"},
+		WaitingFor:   wait.ForHTTP("/"),
+	}
+	nginxC, _ := GenericContainer(ctx, GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	defer nginxC.Terminate(ctx)
+	ip, _ := nginxC.Host(ctx)
+	println(ip)
+}
+
+func ExampleContainer_Start() {
+	ctx := context.Background()
+	req := ContainerRequest{
+		Image:        "nginx",
+		ExposedPorts: []string{"80/tcp"},
+		WaitingFor:   wait.ForHTTP("/"),
+	}
+	nginxC, _ := GenericContainer(ctx, GenericContainerRequest{
+		ContainerRequest: req,
+	})
+	defer nginxC.Terminate(ctx)
+	nginxC.Start(ctx)
+}
+
+func ExampleContainer_MappedPort() {
+	ctx := context.Background()
+	req := ContainerRequest{
+		Image:        "nginx",
+		ExposedPorts: []string{"80/tcp"},
+		WaitingFor:   wait.ForHTTP("/"),
+	}
+	nginxC, _ := GenericContainer(ctx, GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	defer nginxC.Terminate(ctx)
+	ip, _ := nginxC.Host(ctx)
+	port, _ := nginxC.MappedPort(ctx, "80")
+	http.Get(fmt.Sprintf("http://%s:%s", ip, port.Port()))
+}
+
+func TestContainerCreationWithBindAndVolume(t *testing.T) {
+	absPath, err := filepath.Abs("./testresources/hello.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cnl := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cnl()
+	// Create a Docker client.
+	dockerCli, err := client.NewClientWithOpts(client.FromEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dockerCli.NegotiateAPIVersion(ctx)
+	// Create the volume.
+	vol, err := dockerCli.VolumeCreate(ctx, volume.VolumeCreateBody{
+		Driver: "local",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	volumeName := vol.Name
+	defer func() {
+		ctx, cnl := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cnl()
+		err := dockerCli.VolumeRemove(ctx, volumeName, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	// Create the container that writes into the mounted volume.
+	bashC, err := GenericContainer(ctx, GenericContainerRequest{
+		ContainerRequest: ContainerRequest{
+			Image:        "bash",
+			BindMounts:   map[string]string{absPath: "/hello.sh"},
+			VolumeMounts: map[string]string{volumeName: "/data"},
+			Cmd:          []string{"bash", "/hello.sh"},
+			WaitingFor: wait.ForLog("done"),
+		},
+		Started: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		ctx, cnl := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cnl()
+		err := bashC.Terminate(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
 }
